@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TLR2 Self-Similarity Analysis</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: sans-serif;
+            background-color: #f0f2f5;
+        }
+        
+        /* Loading Overlay */
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Main Image Display */
+        #imageContainer {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        
+        #displayImage {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+
+        /* Floating Controls */
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px; /* Initial position */
+            width: 350px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            transition: width 0.3s ease, opacity 0.3s ease; /* Only animate props not involved in drag usually, but we will manage transition in JS */
+        }
+
+        .controls-header {
+            padding: 8px 15px;
+            background: rgba(0,0,0,0.05);
+            cursor: grab;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            user-select: none;
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .controls-header:active {
+            cursor: grabbing;
+        }
+
+        .drag-title {
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: bold;
+        }
+
+        .toggle-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            color: #666;
+            font-size: 16px;
+            padding: 0 5px;
+            transition: transform 0.3s;
+        }
+        
+        .controls-content {
+            padding: 15px 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            transition: opacity 0.2s;
+        }
+
+        /* Collapsed State */
+        .controls.collapsed {
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            overflow: hidden;
+            padding: 0;
+        }
+        
+        .controls.collapsed .controls-header {
+            padding: 0;
+            justify-content: center;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            border: none;
+        }
+        
+        .controls.collapsed .drag-title {
+            display: none;
+        }
+        
+        .controls.collapsed .controls-content {
+            display: none;
+            opacity: 0;
+        }
+
+        .hint {
+            font-size: 1rem;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: bold;
+            font-style: italic;
+            text-align: center;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            width: 100%;
+            justify-content: center;
+            flex-wrap: nowrap;
+        }
+
+        input[type=range] {
+            width: 200px;
+            cursor: pointer;
+        }
+
+        .label {
+            font-weight: bold;
+            color: #007bff;
+            min-width: 120px;
+            text-align: center;
+            word-break: keep-all;
+            white-space: nowrap;
+        }
+        
+        .filename {
+            font-family: monospace;
+            font-size: 0.8em;
+            color: #666;
+            word-break: break-all;
+        }
+        
+        /* Header overlay */
+        h1 {
+            position: fixed;
+            top: 10px;
+            left: 20px;
+            margin: 0;
+            font-size: 1.2rem;
+            color: #333;
+            background: rgba(255,255,255,0.8);
+            padding: 5px 10px;
+            border-radius: 5px;
+            pointer-events: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay">
+        <div class="loader"></div>
+        <div id="loadingText">Loading images... 0/11</div>
+    </div>
+
+    <h1>TLR2 Self-Similarity Analysis</h1>
+
+    <div id="imageContainer">
+        <img id="displayImage" src="" alt="Analysis Result">
+    </div>
+
+    <div class="controls" id="controlsBox">
+        <div class="controls-header" id="dragHandle">
+            <span class="drag-title">Control Panel</span>
+            <button class="toggle-btn" id="toggleBtn" title="Toggle Controls">_</button>
+        </div>
+        <div class="controls-content">
+            <div class="hint">Slide to view self-similarity matrices for different window sizes</div>
+            <div class="control-row">
+                <span class="label">Window Size: <span id="windowValue">1</span></span>
+                <input type="range" id="windowSlider" min="1" max="11" value="1" step="1">
+            </div>
+            <div class="filename" id="filenameDisplay">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        const slider = document.getElementById('windowSlider');
+        const windowValue = document.getElementById('windowValue');
+        const image = document.getElementById('displayImage');
+        const filenameDisplay = document.getElementById('filenameDisplay');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingText = document.getElementById('loadingText');
+        const controlsBox = document.getElementById('controlsBox');
+        const toggleBtn = document.getElementById('toggleBtn');
+        const dragHandle = document.getElementById('dragHandle');
+        
+        // --- Dragging Logic ---
+        let isDragging = false;
+        let startX, startY, initialLeft, initialTop;
+        let isCollapsed = false;
+
+        dragHandle.addEventListener('mousedown', (e) => {
+            if (e.target === toggleBtn) return; // Don't drag if clicking button
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            
+            // Get computed style for current position
+            const rect = controlsBox.getBoundingClientRect();
+            initialLeft = rect.left;
+            initialTop = rect.top;
+            
+            // Disable transition during drag
+            controlsBox.style.transition = 'none';
+            controlsBox.style.right = 'auto'; // Clear right/bottom to use left/top
+            controlsBox.style.bottom = 'auto';
+            controlsBox.style.left = `${initialLeft}px`;
+            controlsBox.style.top = `${initialTop}px`;
+            
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+
+        function onMouseMove(e) {
+            if (!isDragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            controlsBox.style.left = `${initialLeft + dx}px`;
+            controlsBox.style.top = `${initialTop + dy}px`;
+        }
+
+        function onMouseUp() {
+            isDragging = false;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            // Re-enable transition
+            controlsBox.style.transition = 'all 0.3s ease';
+        }
+
+        // --- Collapse/Expand Logic ---
+        toggleBtn.addEventListener('click', () => {
+            isCollapsed = !isCollapsed;
+            
+            if (isCollapsed) {
+                // Collapse to nearest side
+                const rect = controlsBox.getBoundingClientRect();
+                const windowWidth = window.innerWidth;
+                const centerX = rect.left + rect.width / 2;
+                
+                controlsBox.classList.add('collapsed');
+                toggleBtn.textContent = '+';
+                
+                // Determine side
+                if (centerX < windowWidth / 2) {
+                    // Dock Left
+                    controlsBox.style.left = '10px';
+                } else {
+                    // Dock Right
+                    controlsBox.style.left = `${windowWidth - 50}px`; // 40px width + 10px margin
+                }
+            } else {
+                // Expand
+                controlsBox.classList.remove('collapsed');
+                toggleBtn.textContent = '_';
+                
+                // Adjust position if it went off screen due to width expansion
+                const rect = controlsBox.getBoundingClientRect();
+                const windowWidth = window.innerWidth;
+                
+                // If expanded box would go off right edge, shift it left
+                // We are currently at 'left' position. 
+                // If we are docked right, we want to expand inwards (to the left).
+                // But CSS width expansion grows to the right by default if 'left' is set.
+                
+                // Heuristic: If we are on the right half, adjust left to keep right edge stable-ish
+                if (parseInt(controlsBox.style.left) > windowWidth / 2) {
+                    controlsBox.style.left = `${windowWidth - 370}px`; // 350 width + 20 margin
+                }
+            }
+        });
+        
+        const basePath = "TLR2_self_sim_layers_comparison_pca_O60603_window_";
+        const extension = ".jpg";
+        const totalImages = 11;
+        const images = [];
+        let loadedCount = 0;
+
+        // Preload images
+        function preloadImages() {
+            for (let i = 1; i <= totalImages; i++) {
+                const img = new Image();
+                const src = `${basePath}${i}${extension}`;
+                img.src = src;
+                img.onload = () => {
+                    loadedCount++;
+                    loadingText.textContent = `Loading images... ${loadedCount}/${totalImages}`;
+                    if (loadedCount === totalImages) {
+                        finishLoading();
+                    }
+                };
+                img.onerror = () => {
+                    console.error(`Failed to load ${src}`);
+                    loadedCount++; // Still count it to not block
+                    if (loadedCount === totalImages) finishLoading();
+                };
+                images[i] = src; // Store src or object
+            }
+        }
+
+        function finishLoading() {
+            loadingOverlay.style.opacity = '0';
+            setTimeout(() => {
+                loadingOverlay.style.display = 'none';
+            }, 500);
+            // Initialize view
+            updateImage(slider.value);
+        }
+
+        function updateImage(val) {
+            windowValue.textContent = val;
+            const filename = `${basePath}${val}${extension}`;
+            // Since browser cached it, setting src is fast
+            image.src = filename;
+            filenameDisplay.textContent = filename;
+        }
+
+        slider.addEventListener('input', function() {
+            updateImage(this.value);
+        });
+
+        // Start
+        preloadImages();
+    </script>
+</body>
+</html>
