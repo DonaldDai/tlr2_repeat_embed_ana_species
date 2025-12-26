@@ -16,4 +16,4 @@ pip install -r requirements.txt
 
 ## Visualization
 
-To view the comparison of results under different window sizes, please visit the [GitHub Page](https://donalddai.github.io/tlr2_repeat_embed_ana_species/).
+To view the comparison of results between different species, please visit the [GitHub Page](https://donalddai.github.io/tlr2_repeat_embed_ana_species/).

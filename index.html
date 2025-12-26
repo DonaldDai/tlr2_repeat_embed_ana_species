@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TLR2 Self-Similarity Analysis</title>
+    <title>TLR2 Cross-Species Similarity Analysis</title>
     <style>
         body, html {
             margin: 0;
@@ -57,13 +57,14 @@
             max-height: 100%;
             object-fit: contain;
             box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            transition: opacity 0.2s;
         }
 
         /* Floating Controls */
         .controls {
             position: fixed;
             bottom: 20px;
-            right: 20px; /* Initial position */
+            right: 20px;
             width: 350px;
             background: rgba(255, 255, 255, 0.8);
             border-radius: 12px;
@@ -72,7 +73,7 @@
             flex-direction: column;
             backdrop-filter: blur(5px);
             z-index: 100;
-            transition: width 0.3s ease, opacity 0.3s ease; /* Only animate props not involved in drag usually, but we will manage transition in JS */
+            transition: width 0.3s ease, opacity 0.3s ease;
         }
 
         .controls-header {
@@ -112,7 +113,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 5px;
+            gap: 15px;
             transition: opacity 0.2s;
         }
 
@@ -154,22 +155,26 @@
         .control-row {
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 10px;
             width: 100%;
-            justify-content: center;
+            justify-content: space-between;
             flex-wrap: nowrap;
         }
 
-        input[type=range] {
-            width: 200px;
-            cursor: pointer;
+        select {
+            padding: 5px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            width: 100%;
+            font-size: 0.9rem;
+            background-color: white;
         }
 
         .label {
             font-weight: bold;
             color: #007bff;
-            min-width: 120px;
-            text-align: center;
+            min-width: 80px;
+            text-align: left;
             word-break: keep-all;
             white-space: nowrap;
         }
@@ -179,6 +184,8 @@
             font-size: 0.8em;
             color: #666;
             word-break: break-all;
+            text-align: center;
+            margin-top: 5px;
         }
         
         /* Header overlay */
@@ -201,10 +208,10 @@
 
     <div id="loadingOverlay">
         <div class="loader"></div>
-        <div id="loadingText">Loading images... 0/11</div>
+        <div id="loadingText">Initializing...</div>
     </div>
 
-    <h1>TLR2 Self-Similarity Analysis</h1>
+    <h1>TLR2 Cross-Species Similarity Analysis</h1>
 
     <div id="imageContainer">
         <img id="displayImage" src="" alt="Analysis Result">
@@ -216,49 +223,119 @@
             <button class="toggle-btn" id="toggleBtn" title="Toggle Controls">_</button>
         </div>
         <div class="controls-content">
-            <div class="hint">Slide to view self-similarity matrices for different window sizes</div>
+            <div class="hint">Select two species to compare</div>
+            
             <div class="control-row">
-                <span class="label">Window Size: <span id="windowValue">1</span></span>
-                <input type="range" id="windowSlider" min="1" max="11" value="1" step="1">
+                <span class="label">Species 1:</span>
+                <select id="species1">
+                    <!-- Options will be populated by JS -->
+                </select>
             </div>
+
+            <div class="control-row">
+                <span class="label">Species 2:</span>
+                <select id="species2">
+                    <!-- Options will be populated by JS -->
+                </select>
+            </div>
+
             <div class="filename" id="filenameDisplay">Loading...</div>
         </div>
     </div>
 
     <script>
-        const slider = document.getElementById('windowSlider');
-        const windowValue = document.getElementById('windowValue');
+        const speciesList = [
+            'Human[O60603]',
+            'Lamprey[S4S1Q8]',
+            'Hagfish[UPI00358FFA15]',
+            'Leech[T1EUA2]',
+            'Ciona[F6SGF2]'
+        ];
+        const windowSize = 3;
+        // Directory where images are saved (relative to this html file)
+        const figDir = 'sim_fig_species';
+
+        const species1Select = document.getElementById('species1');
+        const species2Select = document.getElementById('species2');
         const image = document.getElementById('displayImage');
         const filenameDisplay = document.getElementById('filenameDisplay');
         const loadingOverlay = document.getElementById('loadingOverlay');
-        const loadingText = document.getElementById('loadingText');
         const controlsBox = document.getElementById('controlsBox');
         const toggleBtn = document.getElementById('toggleBtn');
         const dragHandle = document.getElementById('dragHandle');
-        
+
+        // Populate Selects
+        speciesList.forEach((species) => {
+            const option1 = document.createElement('option');
+            option1.value = species;
+            option1.textContent = species;
+            species1Select.appendChild(option1);
+
+            const option2 = document.createElement('option');
+            option2.value = species;
+            option2.textContent = species;
+            species2Select.appendChild(option2);
+        });
+
+        // Set default selection (e.g., first two)
+        species1Select.selectedIndex = 0;
+        species2Select.selectedIndex = 1;
+
+        function getFilename(name1, name2) {
+            // Python logic: f'{FIG_DIR}/Cross_Sim_Layers_{name_i}_vs_{name_j}_win_{WINDOW_SIZE}.jpg'
+            // Sanitization: .replace(" ", "_").replace("(", "").replace(")", "")
+            
+            let filename = `Cross_Sim_Layers_${name1}_vs_${name2}_win_${windowSize}.jpg`;
+            // Replace spaces with underscores, remove parentheses
+            filename = filename.replace(/ /g, "_").replace(/\(/g, "").replace(/\)/g, "");
+            return `${figDir}/${filename}`;
+        }
+
+        function updateImage() {
+            const s1 = species1Select.value;
+            const s2 = species2Select.value;
+            const src = getFilename(s1, s2);
+            
+            // Visual feedback for loading
+            image.style.opacity = 0.3;
+            filenameDisplay.textContent = "Loading: " + src;
+            
+            // Create a new image object to preload
+            const tempImg = new Image();
+            tempImg.onload = () => {
+                image.src = src;
+                image.style.opacity = 1;
+                filenameDisplay.textContent = src;
+            };
+            tempImg.onerror = () => {
+                image.src = ""; // Clear or set placeholder
+                image.style.opacity = 1;
+                filenameDisplay.textContent = "Error: Image not found (" + src + ")";
+            };
+            tempImg.src = src;
+        }
+
+        species1Select.addEventListener('change', updateImage);
+        species2Select.addEventListener('change', updateImage);
+
         // --- Dragging Logic ---
         let isDragging = false;
         let startX, startY, initialLeft, initialTop;
         let isCollapsed = false;
 
         dragHandle.addEventListener('mousedown', (e) => {
-            if (e.target === toggleBtn) return; // Don't drag if clicking button
+            if (e.target === toggleBtn) return;
             isDragging = true;
             startX = e.clientX;
             startY = e.clientY;
-            
-            // Get computed style for current position
             const rect = controlsBox.getBoundingClientRect();
             initialLeft = rect.left;
             initialTop = rect.top;
-            
-            // Disable transition during drag
             controlsBox.style.transition = 'none';
-            controlsBox.style.right = 'auto'; // Clear right/bottom to use left/top
+            controlsBox.style.right = 'auto';
             controlsBox.style.bottom = 'auto';
             controlsBox.style.left = `${initialLeft}px`;
             controlsBox.style.top = `${initialTop}px`;
-            
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
         });
@@ -275,103 +352,37 @@
             isDragging = false;
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
-            // Re-enable transition
             controlsBox.style.transition = 'all 0.3s ease';
         }
 
         // --- Collapse/Expand Logic ---
         toggleBtn.addEventListener('click', () => {
             isCollapsed = !isCollapsed;
-            
             if (isCollapsed) {
-                // Collapse to nearest side
                 const rect = controlsBox.getBoundingClientRect();
                 const windowWidth = window.innerWidth;
                 const centerX = rect.left + rect.width / 2;
-                
                 controlsBox.classList.add('collapsed');
                 toggleBtn.textContent = '+';
-                
-                // Determine side
                 if (centerX < windowWidth / 2) {
-                    // Dock Left
                     controlsBox.style.left = '10px';
                 } else {
-                    // Dock Right
-                    controlsBox.style.left = `${windowWidth - 50}px`; // 40px width + 10px margin
+                    controlsBox.style.left = `${windowWidth - 50}px`;
                 }
             } else {
-                // Expand
                 controlsBox.classList.remove('collapsed');
                 toggleBtn.textContent = '_';
-                
-                // Adjust position if it went off screen due to width expansion
-                const rect = controlsBox.getBoundingClientRect();
                 const windowWidth = window.innerWidth;
-                
-                // If expanded box would go off right edge, shift it left
-                // We are currently at 'left' position. 
-                // If we are docked right, we want to expand inwards (to the left).
-                // But CSS width expansion grows to the right by default if 'left' is set.
-                
-                // Heuristic: If we are on the right half, adjust left to keep right edge stable-ish
                 if (parseInt(controlsBox.style.left) > windowWidth / 2) {
-                    controlsBox.style.left = `${windowWidth - 370}px`; // 350 width + 20 margin
+                    controlsBox.style.left = `${windowWidth - 370}px`;
                 }
             }
         });
-        
-        const basePath = "TLR2_self_sim_layers_comparison_pca_O60603_window_";
-        const extension = ".jpg";
-        const totalImages = 11;
-        const images = [];
-        let loadedCount = 0;
 
-        // Preload images
-        function preloadImages() {
-            for (let i = 1; i <= totalImages; i++) {
-                const img = new Image();
-                const src = `${basePath}${i}${extension}`;
-                img.src = src;
-                img.onload = () => {
-                    loadedCount++;
-                    loadingText.textContent = `Loading images... ${loadedCount}/${totalImages}`;
-                    if (loadedCount === totalImages) {
-                        finishLoading();
-                    }
-                };
-                img.onerror = () => {
-                    console.error(`Failed to load ${src}`);
-                    loadedCount++; // Still count it to not block
-                    if (loadedCount === totalImages) finishLoading();
-                };
-                images[i] = src; // Store src or object
-            }
-        }
+        // Initial Load
+        loadingOverlay.style.display = 'none';
+        updateImage();
 
-        function finishLoading() {
-            loadingOverlay.style.opacity = '0';
-            setTimeout(() => {
-                loadingOverlay.style.display = 'none';
-            }, 500);
-            // Initialize view
-            updateImage(slider.value);
-        }
-
-        function updateImage(val) {
-            windowValue.textContent = val;
-            const filename = `${basePath}${val}${extension}`;
-            // Since browser cached it, setting src is fast
-            image.src = filename;
-            filenameDisplay.textContent = filename;
-        }
-
-        slider.addEventListener('input', function() {
-            updateImage(this.value);
-        });
-
-        // Start
-        preloadImages();
     </script>
 </body>
 </html>
