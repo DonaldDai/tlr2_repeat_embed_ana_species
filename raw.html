@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TLR2 Cross-Species Similarity Analysis</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: sans-serif;
+            background-color: #f0f2f5;
+        }
+        
+        /* Loading Overlay */
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Main Image Display */
+        #imageContainer {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        
+        #displayImage {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            transition: opacity 0.2s;
+        }
+
+        /* Floating Controls */
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 350px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            transition: width 0.3s ease, opacity 0.3s ease;
+        }
+
+        .controls-header {
+            padding: 8px 15px;
+            background: rgba(0,0,0,0.05);
+            cursor: grab;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            user-select: none;
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .controls-header:active {
+            cursor: grabbing;
+        }
+
+        .drag-title {
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: bold;
+        }
+
+        .toggle-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            color: #666;
+            font-size: 16px;
+            padding: 0 5px;
+            transition: transform 0.3s;
+        }
+        
+        .controls-content {
+            padding: 15px 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            transition: opacity 0.2s;
+        }
+
+        /* Collapsed State */
+        .controls.collapsed {
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            overflow: hidden;
+            padding: 0;
+        }
+        
+        .controls.collapsed .controls-header {
+            padding: 0;
+            justify-content: center;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            border: none;
+        }
+        
+        .controls.collapsed .drag-title {
+            display: none;
+        }
+        
+        .controls.collapsed .controls-content {
+            display: none;
+            opacity: 0;
+        }
+
+        .hint {
+            font-size: 1rem;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: bold;
+            font-style: italic;
+            text-align: center;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            justify-content: space-between;
+            flex-wrap: nowrap;
+        }
+
+        select {
+            padding: 5px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            width: 100%;
+            font-size: 0.9rem;
+            background-color: white;
+        }
+
+        .label {
+            font-weight: bold;
+            color: #007bff;
+            min-width: 80px;
+            text-align: left;
+            word-break: keep-all;
+            white-space: nowrap;
+        }
+        
+        .filename {
+            font-family: monospace;
+            font-size: 0.8em;
+            color: #666;
+            word-break: break-all;
+            text-align: center;
+            margin-top: 5px;
+        }
+        
+        /* Header overlay */
+        h1 {
+            position: fixed;
+            top: 10px;
+            left: 20px;
+            margin: 0;
+            font-size: 1.2rem;
+            color: #333;
+            background: rgba(255,255,255,0.8);
+            padding: 5px 10px;
+            border-radius: 5px;
+            pointer-events: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay">
+        <div class="loader"></div>
+        <div id="loadingText">Initializing...</div>
+    </div>
+
+    <h1>TLR2 Cross-Species Similarity Analysis</h1>
+
+    <div id="imageContainer">
+        <img id="displayImage" src="" alt="Analysis Result">
+    </div>
+
+    <div class="controls" id="controlsBox">
+        <div class="controls-header" id="dragHandle">
+            <span class="drag-title">Control Panel</span>
+            <button class="toggle-btn" id="toggleBtn" title="Toggle Controls">_</button>
+        </div>
+        <div class="controls-content">
+            <div class="hint">Select two species to compare</div>
+            
+            <div class="control-row">
+                <span class="label">Species 1:</span>
+                <select id="species1">
+                    <!-- Options will be populated by JS -->
+                </select>
+            </div>
+
+            <div class="control-row">
+                <span class="label">Species 2:</span>
+                <select id="species2">
+                    <!-- Options will be populated by JS -->
+                </select>
+            </div>
+
+            <div class="filename" id="filenameDisplay">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        const speciesList = [
+            'Human[O60603]',
+            'Lamprey[S4S1Q8]',
+            'Hagfish[UPI00358FFA15]',
+            'Leech[T1EUA2]',
+            'Ciona[F6SGF2]'
+        ];
+        const windowSize = 3;
+        // Directory where images are saved (relative to this html file)
+        const figDir = 'sim_fig_species_raw';
+
+        const species1Select = document.getElementById('species1');
+        const species2Select = document.getElementById('species2');
+        const image = document.getElementById('displayImage');
+        const filenameDisplay = document.getElementById('filenameDisplay');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const controlsBox = document.getElementById('controlsBox');
+        const toggleBtn = document.getElementById('toggleBtn');
+        const dragHandle = document.getElementById('dragHandle');
+
+        // Populate Selects
+        speciesList.forEach((species) => {
+            const option1 = document.createElement('option');
+            option1.value = species;
+            option1.textContent = species;
+            species1Select.appendChild(option1);
+
+            const option2 = document.createElement('option');
+            option2.value = species;
+            option2.textContent = species;
+            species2Select.appendChild(option2);
+        });
+
+        // Set default selection (e.g., first two)
+        species1Select.selectedIndex = 0;
+        species2Select.selectedIndex = 1;
+
+        function getFilename(name1, name2) {
+            // Python logic: f'{FIG_DIR}/Cross_Sim_Layers_{name_i}_vs_{name_j}_win_{WINDOW_SIZE}.jpg'
+            // Sanitization: .replace(" ", "_").replace("(", "").replace(")", "")
+            
+            let filename = `Cross_Sim_Layers_${name1}_vs_${name2}_win_${windowSize}.jpg`;
+            // Replace spaces with underscores, remove parentheses
+            filename = filename.replace(/ /g, "_").replace(/\(/g, "").replace(/\)/g, "");
+            return `${figDir}/${filename}`;
+        }
+
+        function updateImage() {
+            const s1 = species1Select.value;
+            const s2 = species2Select.value;
+            const src = getFilename(s1, s2);
+            
+            // Visual feedback for loading
+            image.style.opacity = 0.3;
+            filenameDisplay.textContent = "Loading: " + src;
+            
+            // Create a new image object to preload
+            const tempImg = new Image();
+            tempImg.onload = () => {
+                image.src = src;
+                image.style.opacity = 1;
+                filenameDisplay.textContent = src;
+            };
+            tempImg.onerror = () => {
+                image.src = ""; // Clear or set placeholder
+                image.style.opacity = 1;
+                filenameDisplay.textContent = "Error: Image not found (" + src + ")";
+            };
+            tempImg.src = src;
+        }
+
+        species1Select.addEventListener('change', updateImage);
+        species2Select.addEventListener('change', updateImage);
+
+        // --- Dragging Logic ---
+        let isDragging = false;
+        let startX, startY, initialLeft, initialTop;
+        let isCollapsed = false;
+
+        dragHandle.addEventListener('mousedown', (e) => {
+            if (e.target === toggleBtn) return;
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = controlsBox.getBoundingClientRect();
+            initialLeft = rect.left;
+            initialTop = rect.top;
+            controlsBox.style.transition = 'none';
+            controlsBox.style.right = 'auto';
+            controlsBox.style.bottom = 'auto';
+            controlsBox.style.left = `${initialLeft}px`;
+            controlsBox.style.top = `${initialTop}px`;
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+
+        function onMouseMove(e) {
+            if (!isDragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            controlsBox.style.left = `${initialLeft + dx}px`;
+            controlsBox.style.top = `${initialTop + dy}px`;
+        }
+
+        function onMouseUp() {
+            isDragging = false;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            controlsBox.style.transition = 'all 0.3s ease';
+        }
+
+        // --- Collapse/Expand Logic ---
+        toggleBtn.addEventListener('click', () => {
+            isCollapsed = !isCollapsed;
+            if (isCollapsed) {
+                const rect = controlsBox.getBoundingClientRect();
+                const windowWidth = window.innerWidth;
+                const centerX = rect.left + rect.width / 2;
+                controlsBox.classList.add('collapsed');
+                toggleBtn.textContent = '+';
+                if (centerX < windowWidth / 2) {
+                    controlsBox.style.left = '10px';
+                } else {
+                    controlsBox.style.left = `${windowWidth - 50}px`;
+                }
+            } else {
+                controlsBox.classList.remove('collapsed');
+                toggleBtn.textContent = '_';
+                const windowWidth = window.innerWidth;
+                if (parseInt(controlsBox.style.left) > windowWidth / 2) {
+                    controlsBox.style.left = `${windowWidth - 370}px`;
+                }
+            }
+        });
+
+        // Initial Load
+        loadingOverlay.style.display = 'none';
+        updateImage();
+
+    </script>
+</body>
+</html>
